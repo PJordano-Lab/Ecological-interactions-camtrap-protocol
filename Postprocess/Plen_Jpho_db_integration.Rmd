@@ -1,0 +1,272 @@
+---
+title: "Plen_Jpho_db_integration"
+author: "PVA"
+date: "12/18/2022"
+output: html_document
+---
+
+Script to integrate Lentiscus (Elena) and Juniperus Phoenicea (Jorge) datasets to SUMHAL phototrapping dataset. Lentiscus comes from GO-PRO cams while Juniperus comes from camera traps. 
+SUMHAL dataset is final_data.csv
+
+As discussed in several Labmeetings Sumhal dataset needs to collapse frugivory events to 5 minutes as camera traps may shot consecutive sequences for the same ecological event. 
+
+Data recovered usig Go-Pro cameras do not need to be collapsed to 5 minutes events. 
+
+Summary of needed columns will be enumerate here (including interaction intensity):
+-
+-
+-
+
+We start integrating Lentiscus data
+
+Things to resolve in this new RMd script:
+1. final_data.csv needs to contain 3 behaviours: Eating, probably eating and searching for food.
+2. lentiscus data needs to be integrated without collapsing to 5 minutes
+3. It would be interesting in Pistacia database to see the freq-distr of duration of events, to see if most of them (the ones that are eating + probably eating + searching for food) are inside the 5 minute time lapse.  
+
+
+
+```{r}
+library(stringr)
+library(dplyr)
+library(lubridate)
+```
+
+ PISTACIA LENTISCUS INTEGRATION
+ 
+```{r}
+setwd("/Users/PV/Documents/GitHub/Animal-detection-cameratrap/Results/Datos Elena - Pistacia/") #Mac sobremesa EBD
+setwd("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/Results/Datos Elena - Pistacia/") #Macbook casa
+
+#Dataset to integrate (Elenas Pistacia must be integrated to Sumhal data)
+len_1 <- read.csv("visits_cam_2018-19_sumhal.csv", sep = ";")
+len_2 <- read.csv("visits_cam_2019-20_sumhal.csv", sep = ";")
+final_data <- read.csv("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/Results/final_data.csv") #Macbook casa
+  final_data <- read.csv("/Users/PV/Documents/GitHub/Animal-detection-cameratrap/Results/final_data.csv") #Mac sobremesa EBD
+coord <- read.csv("id_plant_coords_updated.csv",sep = ";")
+
+#ASK ELENA about two different indiv. in the second datafield yr 
+sort(unique(len_2$plant_id)) #ASK ELENA: Change dataset.... different ids (new individuals 382, 383) Falta 328, 333 in sp2
+sort(unique(len_1$plant_id))
+
+#Bind 2018-19 and 2019-20 field data in a unique dataset (n = 4563 obs).
+len_1 <- len_1[1:14]
+len_2 <- len_2[1:14]
+  len_2$duration <- str_sub(len_2$duration, start = 4, end =7) #need to eliminate %H from %H:%M:%OS for consistency with len_1
+
+  len <- rbind(len_1, len_2)
+  
+#Esfuerzo de muestreo: Hay que transformar el tiempo en formato "%H:%M:%OS" en horas decimales que es como está en la BD "final_data"
+hora_decimal <- sapply(strsplit(len$recording_time, ":"),
+                       function(x) {
+                         x <- as.numeric(x)
+                         x[1]+(x[2]/60)+(x[3]/3600)
+                          })
+
+len <- cbind(len, hora_decimal)
+
+# The duration of the eating event will be a proxy for Interaction Intensity
+duration_sec <- sapply(strsplit(len$duration, ":"),
+              function(x) {
+                x <- as.numeric(x)
+                (x[1]*60)+(x[2])
+              })
+
+len <- cbind(len, duration_sec)
+
+#Format Pistacia dataset to phototrapping dataset
+plen <- len %>%
+  mutate (yr = str_sub(date, start = 1, end =  4)) %>%  #Create DateTime in format %Y:%M:%D %H:%M:%S
+  mutate (month = str_sub(date, start = 5, end =  6)) %>%
+  mutate (day = str_sub(date, start = 7, end =  8)) %>%
+  mutate (new_date = str_c(yr, month, day, sep = "-")) %>%
+  mutate (DateTime = str_c(new_date, real_arrival, sep = " ")) %>%  #Hour starts in the animal arrival
+  merge (coord, by.x = "plant_id", by.y = "id_plant") %>%           #Merge coordinates from coord dataset
+  mutate (behav = str_replace_all(behav, "not_feeding", "not_feed")) %>% #Change name "feeding" to "feed" for the next step  
+  mutate (feed = str_detect(behav,  "feeding")) %>%                  #Create column feeding for selection (includes probably feeding)
+  filter (feed == "TRUE") %>%                                       #Filter only sequences with animal eating
+  mutate (file = video_name)%>%
+  mutate (path = file.path("/Helen_file", video_name)) %>%
+  mutate (plant = "plen")%>%
+  mutate (ncam = 1)%>%
+  mutate (Videos = NA) %>%
+  mutate (esf_muest = hora_decimal/24) %>%                         #convert decimal hours to Days. (Previously recording_time converted to decimal above)
+  mutate (duration = duration_sec) %>%                             # visit duration in seconds (maybe should divide by 10 to maintain consistency with the rest of phototrapping data (duration in seconds converted above)
+  mutate (TimestampIssues = NA) %>%
+  mutate (Sp1 = str_to_lower(spp)) %>%
+  mutate (plant_id = str_c("Plen", plant_id))%>%
+  select (plant, plant_id, DateTime, Sp1, behav, ncam, Videos, esf_muest, duration, TimestampIssues, X_coord, Y_coord, path)%>%   #Maybe select some other columns
+  rename (plant_ID = plant_id, behaviour = behav, Days = esf_muest, duration = duration, Long = X_coord, Lat = Y_coord)
+
+
+
+```
+
+In the early discussion stages we decided to collapse all frugivory events to events occured in 5 minutes for both cameratraps and Go-Pro cameras to keep consistency in both methods. However this idea seemed to poorly fit the Go-Por data as the sample unit is the real event (regardless of the duration). Though, we finally decide to keep events from Go-Pro cameras without collapsing to 5 minutes.  
+```{r}
+####################################################################################
+#########   Group eating events every 5 miutes     ################################ 
+####################################################################################
+#1. Date Time as numeric
+plen$DateTime <- ymd_hms(plen$DateTime) # Make date and time vector understandable in R  
+
+# 2. Collapse ROWS by 5 min intervals (and sum the number of collapsed videos in "count" == number of collapsed videos)   
+plen_5_min <-data.frame(plen %>%
+                          mutate(interval = lubridate::minute(DateTime) %/% 5) %>% # new variable == 5 min intervals (Create 5 min interval cuts)
+                          group_by(path, interval, Sp1) %>%                        #Group by path (same file), interval (5 minutes intervals) and Species (sometimes there are a number up to 5 diferent species in the same interval)
+                          summarise(count = n(),                                   #Number of collapsed videos
+                                    DateTime = first(DateTime), 
+                                    Sp1 = first(Sp1),                             #Only the first species as it is a grouping factor (same species maty be repeated: see count to know how many times did it appear in the interval) 
+                                    duration = sum(duration),                     #video duration (entire event) =~ Intensity
+                                    path = paste(path,collapse=', ' ),
+                                    plant_ID = first(plant_ID),
+                                    days = mean(Days),
+                                    plant = first(plant),
+                                    behaviour = paste(behaviour,collapse=', ' ),
+                                    ncam = first(ncam),
+                                    Videos = 1,
+                                    Long = first(Long),
+                                    Lat = first(Lat),
+                                    TimestampIssues = first(TimestampIssues)))
+```
+
+
+JUNIPERUS PHOENICIA INTEGRATION
+
+```{r}
+setwd("/Users/PV/Documents/GitHub/Animal-detection-cameratrap/Results/Datos Jorge - Juniperus/") #Mac sobremesa EBD
+setwd("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/Results/Datos Jorge - Juniperus/") #Macbook casa
+
+#Dataset to integrate (Jorge´s must be integrated to Sumhal data)
+Juniper <- read.csv("Juniperus_phoenicea_CAMERATRAPS.csv", sep = ";")
+sampling_effort <- read.csv("sampling_effort_CT_JP.csv", sep= ";")
+coords <- read.csv("Juniper_coord.csv", sep=";")
+
+final_data <- read.csv("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/Results/final_data.csv") #Macbook casa
+final_data <- read.csv("/Users/PV/Documents/GitHub/Animal-detection-cameratrap/Results/final_data.csv") #Mac sobremesa EBD
+
+#####################
+# Join coord X, Y and Sampling effort to Juniper data
+coord <- coords %>%
+  select(x_lat, y_long, tree) %>% #select only location and name from all individuals
+  rename(ind = tree)
+
+jpho_1 <- right_join(Juniper, coord, by="ind")  # Join coordenates to data
+
+eff <- sampling_effort %>%     #Select only samplig effort for all individuals
+  select(totaldays, ind) %>%
+  rename(days =  totaldays)
+
+jpho <- right_join(jpho_1, eff, by="ind")  #Join effort to data
+
+######################
+#Adapt jpho data to Sumhal dataset
+str(jpho)
+str(final_data)
+
+jp <- jpho %>%
+  mutate(DateTime = str_c(date,time, sep=" ")) %>%
+  mutate(File = str_c(code, type, sep=".")) %>%
+  mutate(Sp1 = str_c(genus, species, sep=" ")) %>%
+  mutate(Sp1 = str_to_lower(Sp1)) %>%
+  mutate(duration = 10) %>%
+  select(DateTime, File, Sp1, ind, behaviour, x_lat, y_long, days, duration) %>%
+  rename(plant_id = ind, Long = y_long, Lat = x_lat) %>%
+  filter(behaviour == "eating_jp_cone" | behaviour == "eating_jp_leaves"| behaviour =="feeding_or looking_for_jp"| behaviour =="jp_predation") #Select only Eating Events 
+
+
+
+####################################################################################
+#########   Group eating events every 5 minutes     ################################ 
+####################################################################################
+#1. Date Time as numeric
+jp$DateTime <- ymd_hms(jp$DateTime) # Make date and time vector understandable in R  
+str(jp)
+# 2. Collapse ROWS by 5 min intervals (and sum the number of collapsed videos in "count" == number of collapsed videos)   
+jpho_5_min <-data.frame(jp %>%
+                          mutate(interval = lubridate::minute(DateTime) %/% 5) %>% # new variable == 5 min intervals (Create 5 min interval cuts)
+                          group_by(File, interval, Sp1) %>%           #Group by path (same file), interval (5 minutes intervals) and Species (sometimes there are a number up to 5 diferent species in the same interval)
+                          summarise(count = n(),                      #Number of collapsed videos
+                                    DateTime = first(DateTime), 
+                                    Sp1 = first(Sp1),                #Only the first species as it is a grouping factor (same species maty be repeated: see count to know how many times did it appear in the interval)
+                                    duration = sum(duration),        # video duration (each video=10 sec) =~ Intensity
+                                    path = paste(File,collapse=', ' ),
+                                    plant_ID = first(plant_id),
+                                    days = mean(days),
+                                    plant = "jpho",
+                                    behaviour = paste(behaviour,collapse=', ' ),
+                                    ncam = NA,
+                                    Videos = count,
+                                    Long = first(Long),
+                                    Lat = first(Lat),
+                                    TimestampIssues = FALSE))
+```
+
+ MERGE DATASETS (BIND) Pistacia + Juniper + Sumhal data
+
+```{r}
+# Sumhal data
+final_data <- read.csv("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/Results/final_data.csv")
+
+df1 <- final_data %>%
+  select (Plant_ID.x, Sp1, duration, Long, Lat, File, new_path, plant, DateTime, Behaviour, Videos, Days, videos_events, TimestampIssue) %>%
+  rename (plant_id = Plant_ID.x, path = new_path, behaviour = Behaviour, videos = Videos, days = Days, videos_5_min = videos_events, ti = TimestampIssue) %>%
+  mutate (DateTime = as.POSIXct(DateTime))
+
+# Pistacia data  
+df2 <- plen_5_min %>%
+  select (plant_ID, Sp1, duration, Long, Lat, path, plant, DateTime, behaviour, Videos, days, count, TimestampIssues) %>%
+  rename (plant_id = plant_ID, path = path, behaviour = behaviour, videos = Videos, days = days, videos_5_min = count, ti = TimestampIssues)
+
+# Juniperus data
+df3 <- jpho_5_min %>%
+  select (plant_ID, Sp1, duration, Long, Lat, path, plant, DateTime, behaviour, Videos, days, count, TimestampIssues) %>%
+  rename (plant_id = plant_ID, path = path, behaviour = behaviour, videos = Videos, days = days, videos_5_min = count, ti = TimestampIssues)
+
+#Bind the 3 dfs
+DF <- bind_rows(df1,df2,df3)  #Binded Pistacia, Juniperus and Sumhal Datasets  
+str(DF)
+
+#Correct mistaken names
+DF$Sp1 [DF$Sp1 == "?" ] <- "unknown" 
+DF$Sp1 [DF$Sp1 == "unknown unknown" ] <- "unknown" 
+DF$Sp1 [DF$Sp1 == "unkown" ] <- "unknown" 
+DF$Sp1 [DF$Sp1 == "chloris cloris" ] <- "chloris chloris" 
+DF$Sp1 [DF$Sp1 == "cyanistes caerulius" ] <- "cyanistes caeruleus" 
+DF$Sp1 [DF$Sp1 == "cyanopica cyanus" ] <- "cyanopica cooki" 
+DF$Sp1 [DF$Sp1 == "fringilia coelebs" ] <- "fringilla coelebs" 
+DF$Sp1 [DF$Sp1 == "rodent rodent" ] <- "apode-mus" 
+DF$Sp1 [DF$Sp1 == "sylvia sp." ] <- "sylvia sp" 
+
+DF %>%
+  count(Sp1, sort=T)
+
+            write.csv(DF, file="/Users/Pablo/Desktop/phototrappin_integrated_data.csv")
+#########
+############3
+
+#Number of independent (5 min) interactions by plant individuals (and animal species)
+ind <- data.frame(DF %>%
+               group_by(plant_id, Sp1) %>%
+               summarise(n=n()))
+
+pl <- data.frame(DF %>%
+                    group_by(plant) %>%
+                    summarise(n=n()))
+
+#Number of independent events by animal species (similar to abundance of eating)
+DF %>%
+  count(Sp1, sort=T)
+
+#Interactions grouped by animals and plants
+interactions_by_plant <- data.frame (DF %>%
+  group_by(plant, Sp1)%>%
+  summarise(n()) 
+                  )
+
+write.csv(DF, file="/Users/Pablo/Desktop/DF.csv")
+
+
+
+```
+
