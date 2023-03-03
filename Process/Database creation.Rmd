@@ -12,6 +12,7 @@ First we read the resulting csv from Time-lapse visualization (after running the
 library(stringr)
 library(dplyr)
 library(lubridate)
+library(av)
 
 setwd("/Users/PV/Documents/GitHub/Animal-detection-cameratrap/Results") #Mac sobremesa EBD
   setwd("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/Results") #Macbook casa
@@ -24,6 +25,7 @@ d4 <- read.csv("Phototrapping_data4_MD_last_run.csv") #Need to revise all the st
   sort(unique(d1$RelativePath))
 ```
 
+CHECK AND CORRECT INCONSITENCIES
 To create the Data Base from time-lapse outputs (csv´s) we need to correct some inconsistencies in the paths (that are coming from different AI-MD runs or inconsistent path/file names).
 
 "data" contains the unified visualised datasets (Timelapse results) with consistent relative paths.   
@@ -62,17 +64,17 @@ d4 <- cbind(d4,new_path)
 data <- rbind(d1,d2,d3,d4)
 ```
 
-Here we create a new column with the plant name. We also subset the dataset to non empty videos, eliminate car and person. We also correct mistaken names. 
+CREATE PLANT NAME
+Here we create a new column with the plant name. We also subset the dataset to non empty videos, eliminate car and person. Also correct mistaken names. 
 
 "dat" contains results only for animals (wild and domestic) and corrected animal names. 
 ```{r}
 #Create a new column with the plant species (from the file path)
 plant <- word(data$new_path, 1, sep = fixed("\\"))
-unique(plant) #Check
+unique(plant) #just to check
 
 #Merge them to the dataset
 data <- cbind(data,plant)
-str(data)
 
 ################### NAME CORRECTIONS AND WILD ANIMAL SELECTION #################
 #Only select videos with animals
