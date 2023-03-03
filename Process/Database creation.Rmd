@@ -5,9 +5,9 @@ date: "12/19/2022"
 output: html_document
 ---
 
-This code will create the database from cameratraps fieldwork after eliminating empty videos with MD and revise them in Timelapse for species identification, behaviour and annotations. 
+This code will create the database from cameratrap fieldwork for ecological interactions after selection of a confidence threshold provided by AI results (assuming those as empty videos) and after their human-revision in TimeLapse for species identification, behaviour and annotations. 
 
-Read the resulting .csv file from Time-lapse visualization (after running the AI process).
+Read the resulting .csv file from Time-lapse visualization (and after AI threshold selection).
 ```{r}
 library(stringr)
 library(dplyr)
@@ -23,131 +23,87 @@ dn <- read.csv("Phototrapping_datan.csv") #n resulting csv
 ```
 
 CHECK AND CORRECT INCONSITENCIES
-To create the Data Base from time-lapse outputs (csv´s) we need to correct some inconsistencies in the paths (that are coming from different AI-MD runs or inconsistent path/file names).
-
-"data" contains the unified visualised datasets (Timelapse results) with consistent relative paths.   
+To create the Data Base from time-lapse outputs (csv´s) you may need to correct some inconsistencies in the paths (coming from different AI-MD runs or inconsistent path/file names).
 
 ```{r}
-# d1 Change for path consistency. Create new path column (w/o inconsistencies)
+# For example in d1 we will change a path inconsistency and create a new path column (w/o inconsistencies)
 new_path <- str_replace_all(d1$RelativePath, "Review", "Rev") %>%
   str_to_lower() %>%
   str_replace_all("rev_", "rev")
 
 d1 <- cbind(d1,new_path)
 
-# d2 Change for path consistency (new path column) 
-new_path <- str_replace_all(d2$RelativePath, "Rev_", "Rev") %>%
-  str_to_lower() %>%
-  str_replace_all("pyrus_r6", "pyrus")
-  
-d2 <- cbind(d2,new_path)
+# you may have to do the same for the other Timelapse resulting csv files (d2, d3 and d4) 
 
-# d3 Change for path consistency (new path column) (2) add "Pyrus" to the path
-new_path <- file.path ("Pyrus\\", d3$RelativePath) %>%
-  str_remove_all("/") %>%
-  str_replace_all("Rev_", "rev") %>%
-  str_to_lower() # %>% (silencio porque lo cambio a mano en el GRAID) Solo en Copia dGRAID pero no el backup LaCie
-  #str_replace_all("pbou_12", "pbou_012")  esta modificacion ya no tiene sentido en GRAID porque lo cambio a mano. Sin embargo no está cambiado en el backup
-
-d3 <- cbind(d3,new_path)
-
-# d4 Change for path consistency (new path column) 
-new_path <- str_replace_all(d4$RelativePath, "Rev_", "Rev") %>%
-  str_to_lower() 
-
-d4 <- cbind(d4,new_path)
-
-#Merge the 4 datasets 
+#Merge the 4 datasets w/o inconsistencies
 data <- rbind(d1,d2,d3,d4)
 ```
 
 CREATE PLANT NAME
-Here we create a new column with the plant name. We also subset the dataset to non empty videos, eliminate car and person. Also correct mistaken names. 
+Here we create a new column with the plant name and subset only the non empty videos (False positives that were revised). Also we eliminate cars and people and correct mistaken names. 
 
-"dat" contains results only for animals (wild and domestic) and corrected animal names. 
 ```{r}
 #Create a new column with the plant species (from the file path)
 plant <- word(data$new_path, 1, sep = fixed("\\"))
-unique(plant) #just to check
+  data <- cbind(data,plant) #Merge them to the dataset
 
-#Merge them to the dataset
-data <- cbind(data,plant)
-
-################### NAME CORRECTIONS AND WILD ANIMAL SELECTION #################
 #Only select videos with animals
 dat <- subset(data, data$Sp1 != "")
 
-#Eliminate car, person, equus cabalus, equus caballus, bos taurus
+#Eliminate car & person
 dat <- dat %>%
   filter(Sp1 != "car") %>%
-  filter(Sp1 != "person") # %>% #Here I silence but leave it just in case want to make a quick re-selection of only wild animals.
-  #filter(Sp1 != "equus cabalus") %>%
-  #filter(Sp1 != "equus caballus") %>%
-  #filter(Sp1 != "bos taurus")
+  filter(Sp1 != "person") 
 
-#Correct mistaken names
-dat$Sp1 [dat$Sp1 == "ce" ] <- "cervus elaphus" 
+#Correct mistaken names (2 examples)
 dat$Sp1 [dat$Sp1 == "cervu`s elaphus" ] <- "cervus elaphus"
-dat$Sp1 [dat$Sp1 == "at" ] <- "athene noctua" 
-dat$Sp1 [dat$Sp1 == "frigilla coelebs" ] <- "fringilia coelebs"
 dat$Sp1 [dat$Sp1 == "saxicola rubicoola" ] <- "saxicola rubicola" 
-dat$Sp1 [dat$Sp1 == "se" ] <- "serinus serinus" 
-dat$Sp1 [dat$Sp1 == "equus cabalus" ] <- "equus caballus" 
-
-str(dat)
 ```
 
 
 Selection of videos with foraging behaviors ("eating" + "probably eating" + "searching for food"). 
-
-**** Here need to change Behaviour for Behavior ****
 ```{r}
 eating <- dat %>%
   filter(Behaviour == "eating" | Behaviour == "probably eating"| Behaviour == "searching for food")   
-
-#To include column video duration, we run this code (there is a script apart for it in Video_duration.R)
-eating <- read.csv("/Users/PV/Documents/GitHub/Animal-detection-cameratrap/Results/eating_duration.csv") #In Mac SUMHAL
-  eating <- read.csv("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/Results/eating_duration.csv") #MAcBook pro
-
 
 ```
 
 Now we will include VIDEO DURATION for each row. 
 
-This code extracts the video duration from external metadata files (videos that are placed in G-Raid1) to include a "duration" column that will represent the interaction intensity.
+This code extracts the video duration from external metadata files to include a "duration" column that will represent the interaction intensity.
+
+In the first part of the code, a list of files is obtained from your video- file directory and new directories are created to store frames extracted from the videos in the list. In the second part of the code, a CSV file containing a list of video files is created, and a list of video files with "eating events" is extracted, and the duration of each video is extracted using the av_media_info function. Finally, the duration information is joined to the "eating" data set.
 ```{r}
 # Get a list of all files in GRAID 
-dir <- list.dirs ("/Volumes/G-RAID/SUMHAL") #Lista de todos los directorios en el Rack
-fil <- list.files(dir, full.names = T) #Lista de archivos con sus directorios
-fil_clean <- fil[!file.info(fil)$isdir] #Lista de videos sin directorios raiz
+dir <- list.dirs ("Your video-file container") # List the entire directory
+fil <- list.files(dir, full.names = T) # List of video-files (including directories)
+fil_clean <- fil[!file.info(fil)$isdir] #List of video-files (excluding directories)
 write.csv(fil_clean, "/Users/PV/video_file_list.csv", sep = ",")
 
 # Get a list of files with eating events (eating videos)  
-fil_eating <- str_c(eating$RelativePath, eating$File, sep ="/")  #Lista de videos eating
-fil_eat_path <- file.path("/Volumes/G-RAID/SUMHAL", fil_eating) #Lista de videos eating con su path
+fil_eating <- str_c(eating$RelativePath, eating$File, sep ="/")  #List of preselection of eating videos 
+fil_eat_path <- file.path("/Volumes/G-RAID/SUMHAL", fil_eating) #add the path to the list above
 
-# Correct some path syntax mistakes (detected by setdiff function, see below)   
-fil_eat_clean <- fil_eat_path %>%
-  str_replace_all("\\\\", "/") %>%
-  str_replace_all("Pyrus_r6", "Pyrus") %>%  #Las 3 filas siguientes son correcciones de paths erroneos
-  str_replace_all("/Volumes/G-RAID/SUMHAL/Rev", "/Volumes/G-RAID/SUMHAL/Pyrus/Rev") %>%    
-  str_replace_all("/Volumes/G-RAID/SUMHAL/Pyrus/Rev_5", "/Volumes/G-RAID/SUMHAL/Pyrus/Rev_5_20211210")   
-
-# Compare eating list to the entire file list (all files in GRAID) to detect missmatches  
+# Compare eating list to the entire file list (all files in GRAID) to detect missmatches (just in case you need to correct some syntax mistakes)  
 fil_lost <- setdiff(fil_eat_clean, fil_clean) #What is in my_list_2 that is not in my_list_1?
 length(fil_lost)
 
+# Correct some path syntax mistakes (detected by setdiff function, see below)   
+fil_eat_clean <- fil_eat_path %>%
+  str_replace_all("\\\\", "/") #One example of syntax mistake  
+
 # Extract video duration from eating list
-info <- lapply(fil_eat_clean, av_media_info)  #Aplicar la funcion av_media info a la lista de videos
-duration <- sapply(info, function(x){as.numeric(x[1])}) #Extraer sólo la información de duración del video (posicion 1)
+info <- lapply(fil_eat_clean, av_media_info)  #Apply av_media info function to the video list
+duration <- sapply(info, function(x){as.numeric(x[1])}) #Extract only video duration (position 1)
 
 # Join duration to database  
 eating <- cbind(eating, duration)
 
-# write.csv(eating,"/Users/PV/Documents/GitHub/Animal-detection-cameratrap/Results/eating_duration.csv")
 ```
  
- Here we create new columns: Plant_ID, Revision id and new DF
+ Here we create new columns: Plant_ID, Revision id and new DF.
+ 
+ This code is cleaning and modifying the structure of "eating" dataset to prepare it for further analysis. It starts by splitting the path of the video files into different columns. Then, it extracts the Plant_ID and Rev. The resulting dataset includes variables such as File (video file name), DateTime (date and time of the event), Behaviour, Sp1, Count1, plant, duration, Plant_ID, Rev, and ID.
 
 ```{r}
 ## CLEAN THE DATA (Video level == Data non collapsed to 5 min)
@@ -157,18 +113,14 @@ colnames(clean) <- c("Plant_sp","Rev","Plant_ID")
 
 Plant_ID <- str_remove_all(clean$Plant_ID, "_") %>%
   str_sub (start = 1L , end = 7) %>%
-  str_remove_all("\\\\100") %>%
-  str_to_lower() %>%
-  str_replace_all("sas0020", "sasp002")%>%
-  str_replace_all("pbou121", "pbou012")
+  str_to_lower()
 
-Rev <- data.frame(str_replace_all(clean$Rev, "Review", "Rev") %>% 
+Rev <- data.frame(str_replace_all(clean$Rev, "Review", "Rev") %>% #example to change for inconsistncies
                     str_sub (start =1L, end = 5) %>%
                     str_to_lower() %>%
-                    str_remove_all("_") %>%
-                    str_replace_all("rev", "rev0") %>%
-                    str_replace_all("rev010", "rev10"))
-colnames(Rev) <- "rev"
+                    str_remove_all("_"))
+                      
+  colnames(Rev) <- "rev"
 
 new_eating <- eating %>%
   select(File, new_path, DateTime, Behaviour, Sp1, Count1, plant, duration)%>%
@@ -180,12 +132,20 @@ Introducing SAMPLING EFFORT
 
 *** eating effort is the most advanced database at video level and should be the fine scale database for publishing or analysing but need to be standardised with sampling effort ***
 
+Once eating events are clean and with the additional information introduced this code will merge the samplig effort to each deployment (or plant)   
+
+Here is a brief summary of the steps:
+Read the video metadata from a CSV file. This data may be automatically generated with the code contained in: https://github.com/Cyanopica/Ecological-interactions-camtrap-protocol/blob/main/Preprocess/sampling_effort_extraction.R 
+Extract the Plant and Revision IDs from the video metadata to match with the eating event data.
+Stack the effort data for each plant that had more than one cameras.
+Summarize the effort data for each camera-trapped plant by counting the number of videos, days, and cameras used for sampling.
+Merge the effort data to the eating event data using the ID column as the common key.
+
 ```{r}
 # Effort data (revision level)
-video <- read.csv("/Users/Pablo/Documents/GitHub/SUMHAL_WP5_fieldwork/Video.csv", sep=";")     #In MAcbook pro   
-  video <- read.csv("/Users/PV/Documents/GitHub/SUMHAL_WP5_fieldwork/Video.csv", sep=";")   #In Mac sobremesa EBD
+video <- read.csv("Your -video.csv- file directory", sep=";")     #This file can be automatically generated with the script sample_effort_extraction.R    
 
-#Stack efforts for plants that had 2 cameras (i.e Olea or Arbutus)
+#Stack efforts for plants that have more than one cameras
 plant_id <- video$Deployment_ID %>%
   str_remove_all("_") %>%
   str_sub (start =1L, end = 7) %>%
@@ -197,7 +157,7 @@ revision_id <- str_remove_all(video$Revision_ID, "_") %>%
 effort_by_plant <- data.frame (video %>% 
   mutate(ID = str_c(plant_id, revision_id, sep= "_")) %>%
   group_by(ID) %>%
-  add_count(ID) %>%     # Add a column with the Count of number of??
+  add_count(ID) %>%     # Add a column with the Count of number of IDs
   summarise(Deployment_ID = paste(Deployment_ID, collapse=', '),
             Revision_ID = paste(Revision_ID, collapse=', '), 
             Videos = sum(Videos),
@@ -205,18 +165,49 @@ effort_by_plant <- data.frame (video %>%
             Days.in.field= sum (Days.in.field),
             n_cam = (n)))
 
-effort_by_plant %>%     #Number of deployments with more than one camera (just to know)
+effort_by_plant %>%     #Number of deployments with more than one camera (just to check)
   group_by(n_cam) %>%
   summarise(n())
 
-#Merge effort data (some) to eating_data
-eating_effort <- left_join(new_eating, effort_by_plant, by = "ID", keep = F)
+#Merge effort data to eating_data
+eating_effort <- left_join(new_eating, effort_by_plant, by = "ID", keep = F) 
 ```
 
-Group eating events every 5 miutes.   
+Check and fix TimestampIssues
+
+```{r}
+## Fix TIMESTAMP_ISSUES  ## NOTE THAT THEY MAY BE MORE TMPSTISSUES! see above
+   TI <- eating_effort %>%
+     filter(TimestampIssue == "T") #records with TimestampIssues to be fixed manually. 
+   
+ eating_TI <- eating_location %>%
+mutate(DateTime = if_else(X == "59", "2021-08-03 5:00:00", DateTime)) #Repeat this mutate for each TimestampIssues 
+
+```
+
+
+I FINSIH HERE!!!!!!!!! KEEP WORKING HERE
+
+
+
+
+
+
+
+
+
+
+
+
+GROUP EVENTS (5 miutes)   
+
+In this code we group eating events every 5 miutes from the eating_effort data that we just created above . 
+First we convert the date and time column to a format that R can understand then create a new column that represents 5-minute time intervals for each interaction and group the data by the ID of each interaction (i.e., the combination of the plant species, camera, and revision ID).
+Count the number of intervals for each interaction and add this as a new column.
+Collapse the data by each ID and interval, summarizing the data for each interval. 
+Fonally calculate the intensity of the interaction using the number of intervals as a proxy for time spent interacting. The intensity is calculated as the square root of the number of intervals.
  
 ```{r}
-str(eating_effort)
 #1. Date Time as numeric and create a time interval of 5 minutes
 eating_effort$DateTime <- ymd_hms(eating_effort$DateTime) # Make date and time vector understandable in R  
 eating_effort$interval <- cut(eating_effort$DateTime, breaks = "5 min") # new variable == 5 min intervals (Create 5 min intervals)
@@ -251,7 +242,7 @@ eat_2 <- eating_effort %>%
 eating_events <- data.frame(eat_2) 
 ```
 
-Introduce coordinates and location to eating_events
+Introduce coordinates and location to eating_events and fix Timestamp ISSUES
 
 ```{r}
 deployments <- read.csv("/Users/PV/Documents/GitHub/SUMHAL_WP5_fieldwork/Deployments.csv", sep=";")   #In Mac sobremesa EBD
@@ -282,55 +273,6 @@ eating_location$DateTime <- as.character(eating_location$DateTime) #Need to conv
      mutate(TimestampIssue = if_else(DateTime < "2020-07-14 00:00:00","T","F")) %>% #Create a column with Timestam Isuues (data after first deployment setup -Corema2-) NOTE THAT THEY MAY BE MORE TMPSTISSUES!!
      mutate(X = 1:n())
   
-## Fix TIMESTAMP_ISSUES  ## NOTE THAT THEY MAY BE MORE TMPSTISSUES! see above
-   TI <- eating_location %>%
-     filter(TimestampIssue == "T") #46 records with TimestampIssues. To be fixed manually. 
-   
- final_data <- eating_location %>%
-mutate(DateTime = if_else(X == "59", "2021-08-03 5:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "60", "2021-08-03 5:05:00", DateTime))%>%
-mutate(DateTime = if_else(X == "61", "2021-08-08 9:00:00", DateTime))%>% 
-mutate(DateTime = if_else(X == "314", "2021-12-01 16:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "315", "2021-12-02 110:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "316", "2021-12-02 19:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "317", "2021-12-02 16:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "703", "2021-12-16 20:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "704", "2021-12-23 23:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "705", "2021-12-31 18:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "706", "2021-12-31 18:05:00", DateTime))%>%
-mutate(DateTime = if_else(X == "707", "2022-01-11 2:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "708", "2022-01-13 16:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "709", "2022-01-14 18:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "710", "2022-01-14 18:05:00", DateTime))%>%
-mutate(DateTime = if_else(X == "711", "2022-01-14 18:10:00", DateTime))%>%
-mutate(DateTime = if_else(X == "712", "2022-01-14 18:20:00", DateTime))%>%
-mutate(DateTime = if_else(X == "713", "2022-01-14 18:50:00", DateTime))%>%
-mutate(DateTime = if_else(X == "806", "2021-11-23 16:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "807", "2021-11-27 10:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "880", "2021-12-06 11:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "921", "2022-01-05 14:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1176", "2021-09-29 9:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1177", "2021-11-11 18:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1613", "2021-10-11 8:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1614", "2021-10-12 19:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1615", "2021-10-27 12:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1671", "2021-03-13 12:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1672", "2021-03-13 13:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1673", "2021-03-13 13:20:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1674", "2021-03-14 17:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1675", "2021-03-15 12:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1676", "2021-03-16 16:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1677", "2021-03-16 2:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1678", "2021-03-16 2:30:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1679", "2021-03-27 1:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1795", "2021-08-24 3:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1796", "2021-08-26 14:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1797", "2021-04-9 5:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1798", "2021-09-11 2:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1799", "2021-03-16 1:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1800", "2021-03-16 1:10:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1801", "2021-03-23 8:00:00", DateTime))%>%
-mutate(DateTime = if_else(X == "1802", "2021-04-1 2:00:00", DateTime))
 
 
 write.csv(final_data, file="/Users/Pablo/Desktop/final_data.csv") #In MacBook pro - to overwrite final_data file in Results folder 
