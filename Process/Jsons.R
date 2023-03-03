@@ -1,8 +1,5 @@
-##########################################################
-
-#WORKING WITH Java Script Open Notation (.json - results from IA)
-
-##########################################################
+#This code is useful for filtering and copying video files based on confidence levels.
+#results come from the "aggregated.json" (result from a MD run)
 
 library(jsonlite)
 library(dplyr)

@@ -6,10 +6,10 @@ library(dplyr)
 # format for organizing camera-trap data for Ecological interactions. The data 
 # generated here will be the core of the "video.csv" database for controlling the fieldwork 
 # and controlling sampling effort. 
-# The code extracts the first and last video date information from a set of 
-# subfolders containing video files. 
-# It calculates the number of days between the first and last video files and 
-# counts the number of files in each subfolder. 
+# The code reads video files in a parent directory and collects information such 
+# as the number of files, the first and last file dates (sampling effort), and 
+# the duration of the video files. It then converts the collected information 
+# into a data frame and extracts relevant information from the subdirectory names.
 # The results are stored in a data frame and written to a CSV file. 
 
   # Set the parent directory where the video subfolders are located (suggestion: chack each plant species for better controlling posible errors)
@@ -76,40 +76,33 @@ library(dplyr)
            
   head(results_df_2)
   
-    # Write the data frame to a CSV file
+    # Write the data frame to a CSV file (This csv will be copied and pasted in an excell spreadsheet)
   write.csv(results_df_2, file = "/Users/PV/Desktop/Sasp_dates.csv", row.names = FALSE)
   
   
-  ###########################
+###########################
   
-  #This code will generate the Deployment.csv table to control the upper level of sampling effort
+# This code will generate the Deployment.csv table to control the upper level of sampling effort.
   
   deployment_dates <- results_df_2 %>%
     group_by(deployment) %>%
     summarize(first_date = min(first_file_date),
               last_date = max(last_file_date))
-  
-  
-min(file_info$mtime)
 
-#split Revision and Individual from path
-results_deployments <- results_df %>%
-  mutate(new_dir = str_remove_all(subdir, "/Volumes/G-RAID-2/SUMHAL_YR2/Arbutus/Aune_")) %>%           
-  separate(new_dir, into = c("rev", "date", "individual_pl", "camera", sep = "/")) %>%
-  mutate(deployment = str_c(individual_pl, camera, sep = "_")) %>%
-  group_by(deployment) %>%
-  summarise(min(first_file_date))%>%
-  data.frame()
-
+#This code is a simple grouping to help listing the set of sampled individuals for Deployment.csv (to control the upper level of sampling effort).
+# We use the excel spreadsheet that was generated above with the data from "video.csv".
+# The list should match the field notebook, but saves typing time. 
+# Note that first and last dates for deployment setup can´t be automatized and should be always filled with the field notebook information.  
+#Example with Myrtus communis 
 library(readxl)
 library(dplyr)
- Mcom <- read_excel("/Users/Pablo/Documents/GitHub/SUMHAL_WP5_fieldwork/SUMHAL_fieldwork_Myrtus_communis/Myrtus_phototrapping_yr2.xlsx", sheet = 2) 
+  
+ Mcom <- read_excel("/Users/PV/Documents/GitHub/SUMHAL_WP5_fieldwork/SUMHAL_fieldwork_Myrtus_communis/Myrtus_phototrapping_yr2.xlsx", sheet = 2) 
  
-kk <- Mcom %>%
+ind_list <- Mcom %>%
   data.frame() %>%
   group_by(Deployment_ID) %>%
   summarise(as.POSIXct(min(First.video)),
             as.POSIXct(max(Last.video)))
  
-write.csv(kk, "/Users/Pablo/Desktop/lista.csv")
   
