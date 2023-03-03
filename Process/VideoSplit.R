@@ -2,6 +2,13 @@ library(stringr)
 library(av)
 library(dplyr)
 
+# This code splits video files into frames and store them in new directories. 
+# It first gets a list of all video files within a directory, removes the 
+# container path, and creates a new path where the frames will be stored. 
+# It then creates the new directories based on the new path and applies "chispas"
+# a function to recursively split each video into frames and store them in the
+#new directories. Finally, the function is applied to the list of videos.
+
 setwd("/Volumes/your_directory/") #Set work directory to the higher level file container.
 
 #Get the file list
