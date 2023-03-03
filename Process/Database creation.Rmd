@@ -5,24 +5,21 @@ date: "12/19/2022"
 output: html_document
 ---
 
-This code will create the database from SUMHAL cameratraps fieldwork. Note that some codes must be run in different computers, reason why there are 2 Work Directories. 
+This code will create the database from cameratraps fieldwork after eliminating empty videos with MD and revise them in Timelapse for species identification, behaviour and annotations. 
 
-First we read the resulting csv from Time-lapse visualization (after running the AI process). Note that for fieldwork-YR1 there are 4 result csvs (d1 to d4).
+Read the resulting .csv file from Time-lapse visualization (after running the AI process).
 ```{r}
 library(stringr)
 library(dplyr)
 library(lubridate)
 library(av)
 
-setwd("/Users/PV/Documents/GitHub/Animal-detection-cameratrap/Results") #Mac sobremesa EBD
-  setwd("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/Results") #Macbook casa
+setwd("Your working direstory") #Set your working directory
 
-d1 <- read.csv("Phototrapping_data1.csv")
-d2 <- read.csv("Phototrapping_data2.csv") # (1) need to change "Pyrus_r6" to "Pyrus"
-d3 <- read.csv("Phototrapping_data3_Pyrus.csv") # (2) need to add Pyrus to the file path
-d4 <- read.csv("Phototrapping_data4_MD_last_run.csv") #Need to revise all the steps, because don´t know the triquiñuels
- 
-  sort(unique(d1$RelativePath))
+d1 <- read.csv("Phototrapping_data1.csv") #First resulting csv
+d2 <- read.csv("Phototrapping_data2.csv") #Second resulting csv
+...
+dn <- read.csv("Phototrapping_datan.csv") #n resulting csv
 ```
 
 CHECK AND CORRECT INCONSITENCIES
@@ -130,10 +127,10 @@ fil_eating <- str_c(eating$RelativePath, eating$File, sep ="/")  #Lista de video
 fil_eat_path <- file.path("/Volumes/G-RAID/SUMHAL", fil_eating) #Lista de videos eating con su path
 
 # Correct some path syntax mistakes (detected by setdiff function, see below)   
-fil_eat_clean <- fil_eat_path |>
-  str_replace_all("\\\\", "/") |>
-  str_replace_all("Pyrus_r6", "Pyrus") |>  #Las 3 filas siguientes son correcciones de paths erroneos
-  str_replace_all("/Volumes/G-RAID/SUMHAL/Rev", "/Volumes/G-RAID/SUMHAL/Pyrus/Rev") |>    
+fil_eat_clean <- fil_eat_path %>%
+  str_replace_all("\\\\", "/") %>%
+  str_replace_all("Pyrus_r6", "Pyrus") %>%  #Las 3 filas siguientes son correcciones de paths erroneos
+  str_replace_all("/Volumes/G-RAID/SUMHAL/Rev", "/Volumes/G-RAID/SUMHAL/Pyrus/Rev") %>%    
   str_replace_all("/Volumes/G-RAID/SUMHAL/Pyrus/Rev_5", "/Volumes/G-RAID/SUMHAL/Pyrus/Rev_5_20211210")   
 
 # Compare eating list to the entire file list (all files in GRAID) to detect missmatches  
@@ -260,16 +257,16 @@ Introduce coordinates and location to eating_events
 deployments <- read.csv("/Users/PV/Documents/GitHub/SUMHAL_WP5_fieldwork/Deployments.csv", sep=";")   #In Mac sobremesa EBD
   deployments <- read.csv("/Users/Pablo/Documents/GitHub/SUMHAL_WP5_fieldwork/Deployments.csv", sep=";") #MacBook pro
     
-  deployments <- deployments |>
+  deployments <- deployments %>%
       select(Deployment_ID, Location, Long, Lat, Start, End, Days, Camera_ID, Timestamp_Issues)
 
-Plant_ID <- deployments$Deployment_ID |>
-  str_remove_all ("_") |>
-  str_sub (start =1L, end = 7) |>
+Plant_ID <- deployments$Deployment_ID %>%
+  str_remove_all ("_") %>%
+  str_sub (start =1L, end = 7) %>%
   str_to_lower()
 
-deplo <- data.frame(cbind (deployments, Plant_ID) |>
-  group_by(Plant_ID) |>
+deplo <- data.frame(cbind (deployments, Plant_ID) %>%
+  group_by(Plant_ID) %>%
   summarise(Plant_ID = first(Plant_ID),
             Camera_ID = paste(Camera_ID, collapse = ', '),
             Long = first(Long),
@@ -280,59 +277,59 @@ eating_location <- left_join(eating_events, deplo, by = "Plant_ID", keep = TRUE)
 
 eating_location$DateTime <- as.character(eating_location$DateTime) #Need to convert to character from POSITct for fixing timestamp Issues with if_else
    
-  eating_location <- eating_location |>
-     select(File, new_path, plant, Plant_ID.x, DateTime, Sp1, Behaviour, n_cam, Videos, Days, videos_events, duration, Long, Lat ) |> #remove non-used columns
-     mutate(TimestampIssue = if_else(DateTime < "2020-07-14 00:00:00","T","F")) |> #Create a column with Timestam Isuues (data after first deployment setup -Corema2-) NOTE THAT THEY MAY BE MORE TMPSTISSUES!!
+  eating_location <- eating_location %>%
+     select(File, new_path, plant, Plant_ID.x, DateTime, Sp1, Behaviour, n_cam, Videos, Days, videos_events, duration, Long, Lat ) %>% #remove non-used columns
+     mutate(TimestampIssue = if_else(DateTime < "2020-07-14 00:00:00","T","F")) %>% #Create a column with Timestam Isuues (data after first deployment setup -Corema2-) NOTE THAT THEY MAY BE MORE TMPSTISSUES!!
      mutate(X = 1:n())
   
 ## Fix TIMESTAMP_ISSUES  ## NOTE THAT THEY MAY BE MORE TMPSTISSUES! see above
-   TI <- eating_location |>
+   TI <- eating_location %>%
      filter(TimestampIssue == "T") #46 records with TimestampIssues. To be fixed manually. 
    
- final_data <- eating_location |>
-mutate(DateTime = if_else(X == "59", "2021-08-03 5:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "60", "2021-08-03 5:05:00", DateTime))|>
-mutate(DateTime = if_else(X == "61", "2021-08-08 9:00:00", DateTime))|> 
-mutate(DateTime = if_else(X == "314", "2021-12-01 16:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "315", "2021-12-02 110:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "316", "2021-12-02 19:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "317", "2021-12-02 16:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "703", "2021-12-16 20:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "704", "2021-12-23 23:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "705", "2021-12-31 18:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "706", "2021-12-31 18:05:00", DateTime))|>
-mutate(DateTime = if_else(X == "707", "2022-01-11 2:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "708", "2022-01-13 16:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "709", "2022-01-14 18:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "710", "2022-01-14 18:05:00", DateTime))|>
-mutate(DateTime = if_else(X == "711", "2022-01-14 18:10:00", DateTime))|>
-mutate(DateTime = if_else(X == "712", "2022-01-14 18:20:00", DateTime))|>
-mutate(DateTime = if_else(X == "713", "2022-01-14 18:50:00", DateTime))|>
-mutate(DateTime = if_else(X == "806", "2021-11-23 16:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "807", "2021-11-27 10:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "880", "2021-12-06 11:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "921", "2022-01-05 14:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1176", "2021-09-29 9:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1177", "2021-11-11 18:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1613", "2021-10-11 8:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1614", "2021-10-12 19:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1615", "2021-10-27 12:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1671", "2021-03-13 12:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1672", "2021-03-13 13:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1673", "2021-03-13 13:20:00", DateTime))|>
-mutate(DateTime = if_else(X == "1674", "2021-03-14 17:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1675", "2021-03-15 12:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1676", "2021-03-16 16:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1677", "2021-03-16 2:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1678", "2021-03-16 2:30:00", DateTime))|>
-mutate(DateTime = if_else(X == "1679", "2021-03-27 1:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1795", "2021-08-24 3:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1796", "2021-08-26 14:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1797", "2021-04-9 5:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1798", "2021-09-11 2:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1799", "2021-03-16 1:00:00", DateTime))|>
-mutate(DateTime = if_else(X == "1800", "2021-03-16 1:10:00", DateTime))|>
-mutate(DateTime = if_else(X == "1801", "2021-03-23 8:00:00", DateTime))|>
+ final_data <- eating_location %>%
+mutate(DateTime = if_else(X == "59", "2021-08-03 5:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "60", "2021-08-03 5:05:00", DateTime))%>%
+mutate(DateTime = if_else(X == "61", "2021-08-08 9:00:00", DateTime))%>% 
+mutate(DateTime = if_else(X == "314", "2021-12-01 16:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "315", "2021-12-02 110:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "316", "2021-12-02 19:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "317", "2021-12-02 16:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "703", "2021-12-16 20:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "704", "2021-12-23 23:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "705", "2021-12-31 18:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "706", "2021-12-31 18:05:00", DateTime))%>%
+mutate(DateTime = if_else(X == "707", "2022-01-11 2:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "708", "2022-01-13 16:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "709", "2022-01-14 18:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "710", "2022-01-14 18:05:00", DateTime))%>%
+mutate(DateTime = if_else(X == "711", "2022-01-14 18:10:00", DateTime))%>%
+mutate(DateTime = if_else(X == "712", "2022-01-14 18:20:00", DateTime))%>%
+mutate(DateTime = if_else(X == "713", "2022-01-14 18:50:00", DateTime))%>%
+mutate(DateTime = if_else(X == "806", "2021-11-23 16:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "807", "2021-11-27 10:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "880", "2021-12-06 11:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "921", "2022-01-05 14:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1176", "2021-09-29 9:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1177", "2021-11-11 18:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1613", "2021-10-11 8:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1614", "2021-10-12 19:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1615", "2021-10-27 12:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1671", "2021-03-13 12:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1672", "2021-03-13 13:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1673", "2021-03-13 13:20:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1674", "2021-03-14 17:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1675", "2021-03-15 12:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1676", "2021-03-16 16:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1677", "2021-03-16 2:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1678", "2021-03-16 2:30:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1679", "2021-03-27 1:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1795", "2021-08-24 3:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1796", "2021-08-26 14:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1797", "2021-04-9 5:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1798", "2021-09-11 2:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1799", "2021-03-16 1:00:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1800", "2021-03-16 1:10:00", DateTime))%>%
+mutate(DateTime = if_else(X == "1801", "2021-03-23 8:00:00", DateTime))%>%
 mutate(DateTime = if_else(X == "1802", "2021-04-1 2:00:00", DateTime))
 
 
