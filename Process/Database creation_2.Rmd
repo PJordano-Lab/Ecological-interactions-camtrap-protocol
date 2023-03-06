@@ -1,0 +1,280 @@
+---
+title: "Database creation"
+author: "PVA"
+date: "12/19/2022"
+output: html_document
+---
+
+This code will create the database from cameratrap fieldwork for ecological interactions after selection of a confidence threshold provided by AI results (assuming those as empty videos) and after their human-revision in TimeLapse for species identification, behaviour and annotations. 
+
+Read the resulting .csv file from Time-lapse visualization (and after AI threshold selection).
+```{r}
+library(stringr)
+library(dplyr)
+library(lubridate)
+library(av)
+
+setwd("Your working direstory") #Set your working directory
+
+d1 <- read.csv("Phototrapping_data1.csv") #First resulting csv
+d2 <- read.csv("Phototrapping_data2.csv") #Second resulting csv
+...
+dn <- read.csv("Phototrapping_datan.csv") #n resulting csv
+```
+
+CHECK AND CORRECT INCONSITENCIES
+To create the Data Base from time-lapse outputs (csv´s) you may need to correct some inconsistencies in the paths (coming from different AI-MD runs or inconsistent path/file names).
+
+```{r}
+# For example in d1 we will change a path inconsistency and create a new path column (w/o inconsistencies)
+new_path <- str_replace_all(d1$RelativePath, "Review", "Rev") %>%
+  str_to_lower() %>%
+  str_replace_all("rev_", "rev")
+
+d1 <- cbind(d1,new_path)
+
+# you may have to do the same for the other Timelapse resulting csv files (d2, d3 and d4) 
+
+#Merge the 4 datasets w/o inconsistencies
+data <- rbind(d1,d2,d3,d4)
+```
+
+CREATE PLANT NAME
+Here we create a new column with the plant name and subset only the non empty videos (False positives that were revised). Also we eliminate cars and people and correct mistaken names. 
+
+```{r}
+#Create a new column with the plant species (from the file path)
+plant <- word(data$new_path, 1, sep = fixed("\\"))
+  data <- cbind(data,plant) #Merge them to the dataset
+
+#Only select videos with animals
+dat <- subset(data, data$Sp1 != "")
+
+#Eliminate car & person
+dat <- dat %>%
+  filter(Sp1 != "car") %>%
+  filter(Sp1 != "person") 
+
+#Correct mistaken names (2 examples)
+dat$Sp1 [dat$Sp1 == "cervu`s elaphus" ] <- "cervus elaphus"
+dat$Sp1 [dat$Sp1 == "saxicola rubicoola" ] <- "saxicola rubicola" 
+```
+
+
+Selection of videos with foraging behaviors ("eating" + "probably eating" + "searching for food"). 
+```{r}
+eating <- dat %>%
+  filter(Behaviour == "eating" | Behaviour == "probably eating"| Behaviour == "searching for food")   
+
+```
+
+Now we will include VIDEO DURATION for each row. 
+
+This code extracts the video duration from external metadata files to include a "duration" column that will represent the interaction intensity.
+
+In the first part of the code, a list of files is obtained from your video- file directory and new directories are created to store frames extracted from the videos in the list. In the second part of the code, a CSV file containing a list of video files is created, and a list of video files with "eating events" is extracted, and the duration of each video is extracted using the av_media_info function. Finally, the duration information is joined to the "eating" data set.
+```{r}
+# Get a list of all files in GRAID 
+dir <- list.dirs ("Your video-file container") # List the entire directory
+fil <- list.files(dir, full.names = T) # List of video-files (including directories)
+fil_clean <- fil[!file.info(fil)$isdir] #List of video-files (excluding directories)
+write.csv(fil_clean, "/Users/PV/video_file_list.csv", sep = ",")
+
+# Get a list of files with eating events (eating videos)  
+fil_eating <- str_c(eating$RelativePath, eating$File, sep ="/")  #List of preselection of eating videos 
+fil_eat_path <- file.path("/Volumes/G-RAID/SUMHAL", fil_eating) #add the path to the list above
+
+# Compare eating list to the entire file list (all files in GRAID) to detect missmatches (just in case you need to correct some syntax mistakes)  
+fil_lost <- setdiff(fil_eat_clean, fil_clean) #What is in my_list_2 that is not in my_list_1?
+length(fil_lost)
+
+# Correct some path syntax mistakes (detected by setdiff function, see below)   
+fil_eat_clean <- fil_eat_path %>%
+  str_replace_all("\\\\", "/") #One example of syntax mistake  
+
+# Extract video duration from eating list
+info <- lapply(fil_eat_clean, av_media_info)  #Apply av_media info function to the video list
+duration <- sapply(info, function(x){as.numeric(x[1])}) #Extract only video duration (position 1)
+
+# Join duration to database  
+eating <- cbind(eating, duration)
+
+```
+ 
+ Here we create new columns: Plant_ID, Revision id and new DF.
+ 
+ This code is cleaning and modifying the structure of "eating" dataset to prepare it for further analysis. It starts by splitting the path of the video files into different columns. Then, it extracts the Plant_ID and Rev. The resulting dataset includes variables such as File (video file name), DateTime (date and time of the event), Behaviour, Sp1, Count1, plant, duration, Plant_ID, Rev, and ID.
+
+```{r}
+## CLEAN THE DATA (Video level == Data non collapsed to 5 min)
+#Split path in different columns  
+clean <- data.frame(str_split_fixed(eating$new_path, pattern ="\\\\", 3))
+colnames(clean) <- c("Plant_sp","Rev","Plant_ID")
+
+Plant_ID <- str_remove_all(clean$Plant_ID, "_") %>%
+  str_sub (start = 1L , end = 7) %>%
+  str_to_lower()
+
+Rev <- data.frame(str_replace_all(clean$Rev, "Review", "Rev") %>% #example to change for inconsistncies
+                    str_sub (start =1L, end = 5) %>%
+                    str_to_lower() %>%
+                    str_remove_all("_"))
+                      
+  colnames(Rev) <- "rev"
+
+new_eating <- eating %>%
+  select(File, new_path, DateTime, Behaviour, Sp1, Count1, plant, duration)%>%
+  cbind(Plant_ID, Rev) %>%
+  mutate(ID = str_c (Plant_ID, rev, sep="_"))
+```
+
+Introducing SAMPLING EFFORT
+
+*** eating effort is the most advanced database at video level and should be the fine scale database for publishing or analysing but need to be standardized with sampling effort ***
+
+Once eating events are clean and with the additional information introduced this code will merge the samplig effort to each deployment (or plant)   
+
+Here is a brief summary of the steps:
+Read the video metadata from a CSV file. This data may be automatically generated with the code contained in: https://github.com/Cyanopica/Ecological-interactions-camtrap-protocol/blob/main/Preprocess/sampling_effort_extraction.R 
+Extract the Plant and Revision IDs from the video metadata to match with the eating event data.
+Stack the effort data for each plant that had more than one cameras.
+Summarize the effort data for each camera-trapped plant by counting the number of videos, days, and cameras used for sampling.
+Merge the effort data to the eating event data using the ID column as the common key.
+
+```{r}
+# Effort data (revision level)
+video <- read.csv("Your -video.csv- file directory", sep=";")     #This file can be automatically generated with the script sample_effort_extraction.R    
+
+#Stack efforts for plants that have more than one cameras
+plant_id <- video$Deployment_ID %>%
+  str_remove_all("_") %>%
+  str_sub (start =1L, end = 7) %>%
+  str_to_lower()
+
+revision_id <- str_remove_all(video$Revision_ID, "_") %>%
+  str_to_lower()
+
+effort_by_plant <- data.frame (video %>% 
+  mutate(ID = str_c(plant_id, revision_id, sep= "_")) %>%
+  group_by(ID) %>%
+  add_count(ID) %>%     # Add a column with the Count of number of IDs
+  summarise(Deployment_ID = paste(Deployment_ID, collapse=', '),
+            Revision_ID = paste(Revision_ID, collapse=', '), 
+            Videos = sum(Videos),
+            Days = sum (Days),
+            Days.in.field= sum (Days.in.field),
+            n_cam = (n)))
+
+effort_by_plant %>%     #Number of deployments with more than one camera (just to check)
+  group_by(n_cam) %>%
+  summarise(n())
+
+#Merge effort data to eating_data
+eating_effort <- left_join(new_eating, effort_by_plant, by = "ID", keep = F) 
+```
+
+Check and fix TimestampIssues
+
+```{r}
+## Fix TIMESTAMP_ISSUES  ## NOTE THAT THEY MAY BE MORE TMPSTISSUES! see above
+   TI <- eating_effort %>%
+     filter(TimestampIssue == "T") #records with TimestampIssues to be fixed manually. 
+   
+ eating_TI <- eating_location %>%
+mutate(DateTime = if_else(X == "59", "2021-08-03 5:00:00", DateTime)) #Repeat this mutate for each TimestampIssues 
+
+```
+
+
+I FINSIH HERE!!!!!!!!! KEEP WORKING HERE
+
+
+
+
+
+
+
+
+
+
+
+
+GROUP EVENTS (5 miutes)   
+
+In this code we group eating events every 5 miutes from the eating_effort data created above . 
+First we convert the date and time column to a format that R can understand then create a new column that represents 5-minute time intervals for each interaction and group the data by the ID of each interaction (i.e., the combination of the plant species, camera, and revision ID).
+Count the number of intervals for each interaction and add this as a new column.
+Collapse the data by each ID and interval, summarizing the data for each interval. 
+Finally calculate the intensity of the interaction using the number of intervals as a proxy for time spent interacting. The intensity is calculated as the square root of the number of intervals.
+ 
+```{r}
+#1. Date Time as numeric and create a time interval of 5 minutes
+eating_effort$DateTime <- ymd_hms(eating_effort$DateTime) # Make date and time vector understandable in R  
+eating_effort$interval <- cut(eating_effort$DateTime, breaks = "5 min") # new variable == 5 min intervals (Create 5 min intervals)
+
+# 2. Collapse ROWS by 5 min intervals (and sum the number of collapsed videos in "n" == interaction intensity)   
+eat_2 <- eating_effort %>%                                       
+  group_by(ID) %>%
+  mutate(ID = cur_group_id()) %>% #Create an ID for each Relative Path (ID for Revision + Camera). need to be a DF
+  data.frame()  %>%
+  add_count(ID, interval) %>%    # Add a column with the Count of number of intervals for each REV_ID. 
+  group_by(ID, interval) %>%     # Collapse rows. Group rows with n > 1 and summarise the data from the first row. Need to define all variables
+  summarise(File = paste(File, collapse=', '),
+            new_path = first(new_path), 
+            plant = first(plant),
+            Plant_ID = first(Plant_ID),
+            DateTime = first(DateTime),
+            ID= first (ID),
+            Species = paste(Sp1,collapse=', ' ),
+            Sp1 = first(Sp1),
+            Behaviour = paste(Behaviour, collapse=', '),
+            interval = first(interval),
+            Deployment_ID = first(Deployment_ID),
+            n_cam = first(n_cam),
+            Videos = mean(Videos),
+            Days = mean(Days),
+            Days.in.field = first(Days.in.field),
+            interval = first(interval),
+            n = sum(n),
+            duration = sum(duration)) %>%   
+            mutate(videos_events = sqrt(n))  #Create the new intensity column with the number of videos/event. Intensity will be measured as time eating (n*10 sec)
+            
+eating_events <- data.frame(eat_2) 
+```
+
+Introduce coordinates and location to eating_events and fix Timestamp ISSUES
+
+```{r}
+deployments <- read.csv("/Users/PV/Documents/GitHub/SUMHAL_WP5_fieldwork/Deployments.csv", sep=";")   #In Mac sobremesa EBD
+  deployments <- read.csv("/Users/Pablo/Documents/GitHub/SUMHAL_WP5_fieldwork/Deployments.csv", sep=";") #MacBook pro
+    
+  deployments <- deployments %>%
+      select(Deployment_ID, Location, Long, Lat, Start, End, Days, Camera_ID, Timestamp_Issues)
+
+Plant_ID <- deployments$Deployment_ID %>%
+  str_remove_all ("_") %>%
+  str_sub (start =1L, end = 7) %>%
+  str_to_lower()
+
+deplo <- data.frame(cbind (deployments, Plant_ID) %>%
+  group_by(Plant_ID) %>%
+  summarise(Plant_ID = first(Plant_ID),
+            Camera_ID = paste(Camera_ID, collapse = ', '),
+            Long = first(Long),
+            Lat = first(Lat),
+            Location = first(Location)))
+   
+eating_location <- left_join(eating_events, deplo, by = "Plant_ID", keep = TRUE) #Join 5 min events to deployment information
+
+eating_location$DateTime <- as.character(eating_location$DateTime) #Need to convert to character from POSITct for fixing timestamp Issues with if_else
+   
+  eating_location <- eating_location %>%
+     select(File, new_path, plant, Plant_ID.x, DateTime, Sp1, Behaviour, n_cam, Videos, Days, videos_events, duration, Long, Lat ) %>% #remove non-used columns
+     mutate(TimestampIssue = if_else(DateTime < "2020-07-14 00:00:00","T","F")) %>% #Create a column with Timestam Isuues (data after first deployment setup -Corema2-) NOTE THAT THEY MAY BE MORE TMPSTISSUES!!
+     mutate(X = 1:n())
+  
+
+
+write.csv(final_data, file="/Users/Pablo/Desktop/final_data.csv") #In MacBook pro - to overwrite final_data file in Results folder 
+```
+
