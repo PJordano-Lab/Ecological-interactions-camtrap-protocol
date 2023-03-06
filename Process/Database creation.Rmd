@@ -130,7 +130,7 @@ new_eating <- eating %>%
 
 Introducing SAMPLING EFFORT
 
-*** eating effort is the most advanced database at video level and should be the fine scale database for publishing or analysing but need to be standardised with sampling effort ***
+*** eating effort is the most advanced database at video level and should be the fine scale database for publishing or analysing but need to be standardized with sampling effort ***
 
 Once eating events are clean and with the additional information introduced this code will merge the samplig effort to each deployment (or plant)   
 
@@ -201,11 +201,11 @@ I FINSIH HERE!!!!!!!!! KEEP WORKING HERE
 
 GROUP EVENTS (5 miutes)   
 
-In this code we group eating events every 5 miutes from the eating_effort data that we just created above . 
+In this code we group eating events every 5 miutes from the eating_effort data created above . 
 First we convert the date and time column to a format that R can understand then create a new column that represents 5-minute time intervals for each interaction and group the data by the ID of each interaction (i.e., the combination of the plant species, camera, and revision ID).
 Count the number of intervals for each interaction and add this as a new column.
 Collapse the data by each ID and interval, summarizing the data for each interval. 
-Fonally calculate the intensity of the interaction using the number of intervals as a proxy for time spent interacting. The intensity is calculated as the square root of the number of intervals.
+Finally calculate the intensity of the interaction using the number of intervals as a proxy for time spent interacting. The intensity is calculated as the square root of the number of intervals.
  
 ```{r}
 #1. Date Time as numeric and create a time interval of 5 minutes
