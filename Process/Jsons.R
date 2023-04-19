@@ -42,3 +42,26 @@ lapply(container, dir.create, recursive =T) # Create directories for the new pat
 file.copy(from = origin, to = destiny, 
           overwrite = TRUE, recursive=TRUE,
           copy.mode = TRUE, copy.date = T)
+
+#-------------------------------------------------------------------------------------------
+
+#Combine json results from MD into a single file
+
+#Read the json files (x4) 
+json_file_1 <- fromJSON("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/AI results/donana-aguilar-2022-01-14_detections.filtered_rde_0.60_0.85_20_0.10_aggregated.json")
+df_1 <- as.data.frame(json_file_1)
+
+json_file_2 <- fromJSON("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/AI results/donana-aguilar-2022-02-17_detections_videos.filtered_rde_0.60_0.85_20_0.15_aggregated.json")
+df_2 <- as.data.frame(json_file_1)
+
+json_file_3 <- fromJSON("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/AI results/donana-aguilar-2022-03-18_detections.filtered_rde_0.60_0.85_20_0.15_aggregated.json")
+df_3 <- as.data.frame(json_file_1)
+
+json_file_4 <- fromJSON("/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/AI results/donana-aguilar-2022-04-21_detections.filtered_rde_0.60_0.85_15_0.20_aggregated.json")
+df_4 <- as.data.frame(json_file_1)
+
+#Combine the data frames
+combined_df <- rbind(df_1, df_2, df_3, df_4)
+
+#Write the combined df to JSON
+writeLines(toJSON(combined_df), "/Users/Pablo/Documents/GitHub/Animal-detection-cameratrap/AI results/combined_file.json")
