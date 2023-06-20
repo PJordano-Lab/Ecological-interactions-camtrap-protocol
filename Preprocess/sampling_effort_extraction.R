@@ -12,7 +12,7 @@ library(dplyr)
 # into a data frame and extracts relevant information from the subdirectory names.
 # The results are stored in a data frame and written to a CSV file. 
 
-  # Set the parent directory where the video subfolders are located (suggestion: chack each plant species for better controlling posible errors)
+  # Set the parent directory where the video subfolders are located (suggestion: check each plant species for better controlling possible errors)
   parent_dir <- "/Volumes/G-RAID-2/SUMHAL_YR2/Smilax"
   
   # Get a list of all subdirectories within the parent directory
