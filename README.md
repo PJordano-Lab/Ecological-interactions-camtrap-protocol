@@ -1,5 +1,5 @@
 # Ecological-interactions-camtrap-protocol
-This repository contains the details and associated code for the paper: _A Machine Learning Application to Camera-Traps: Robust Species Interactions Datasets for Analysis of Mutualistic Networks_.
+This repository contains the details and associated code for the paper: _A Machine Learning Application to Camera-Traps: Robust Species Interactions Datasets for Analysis of Mutualistic Networks_. The ms is now under review, available at bioRxiv, [here](https://doi.org/10.####/2025.03.##.######). 
 
 Pablo Villalva and Pedro Jordano
 
