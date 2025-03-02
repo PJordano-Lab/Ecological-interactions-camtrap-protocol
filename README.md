@@ -1,5 +1,5 @@
 # Ecological-interactions-camtrap-protocol
-This repository contains the details and associated code for the paper: _Protocols for recording animal-plant interactions data with camera traps: an AI-based workflow_.
+This repository contains the details and associated code for the paper: _A Machine Learning Application to Camera-Traps: Robust Species Interactions Datasets for Analysis of Mutualistic Networks_.
 
 Pablo Villalva and Pedro Jordano
 
