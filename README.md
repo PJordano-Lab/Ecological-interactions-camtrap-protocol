@@ -1,5 +1,6 @@
 # Ecological-interactions-camtrap-protocol
 This repository contains the details and associated code for the paper: _A Machine Learning Application to Camera-Traps: Robust Species Interactions Datasets for Analysis of Mutualistic Networks_. The ms is now under review, available at bioRxiv, [here](https://doi.org/10.1101/2025.03.01.640990). 
+The data used in this paper can be accessed in [our previous publication in _Ecology_](https://doi.org/10.1002/ecy.4424).
 
 ## Summary
 You can use this repository as a guide for processing large numbers of video-file sets generated during camera trap surveys for monitoring animal-plant interactions (i.e., visits of animal frugivores to fruiting plants). We combine a camera trap field protocol (preprocessing) with several tools for time-saving processing (and post processing). 
