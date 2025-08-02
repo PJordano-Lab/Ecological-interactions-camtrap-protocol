@@ -13,7 +13,7 @@ library(dplyr)
 # The results are stored in a data frame and written to a CSV file. 
 
   # Set the parent directory where the video subfolders are located (suggestion: check each plant species for better controlling possible errors)
-  parent_dir <- "/Volumes/G-RAID-2/SUMHAL_YR2/Smilax"
+  parent_dir <- "Your directory"
   
   # Get a list of all subdirectories within the parent directory
   subdirs <- list.dirs(parent_dir, recursive = TRUE)
@@ -68,7 +68,7 @@ library(dplyr)
 
   #split Revision and Individual from path
   results_df_2 <- results_df %>%
-    mutate(new_dir = str_remove_all(subdir, "/Volumes/G-RAID-2/SUMHAL_YR2/Smilax/Sasp_")) %>%           
+    mutate(new_dir = str_remove_all(subdir, "Your directory")) %>%           
     separate(new_dir, into = c("rev", "date", "individual_pl", "camera", sep = "/")) %>%
     mutate(deployment = str_c(individual_pl, camera, sep = "_")) %>%
     select(deployment, rev, num_files, first_file_date, last_file_date, num_days)%>%
@@ -77,7 +77,7 @@ library(dplyr)
   head(results_df_2)
   
     # Write the data frame to a CSV file (This csv will be copied and pasted in an excell spreadsheet)
-  write.csv(results_df_2, file = "/Users/PV/Desktop/Sasp_dates.csv", row.names = FALSE)
+  write.csv(results_df_2, file = "Your directory/Your file name.csv", row.names = FALSE)
   
   
 ###########################
@@ -97,7 +97,7 @@ library(dplyr)
 library(readxl)
 library(dplyr)
   
- Mcom <- read_excel("/Users/PV/Documents/GitHub/SUMHAL_WP5_fieldwork/SUMHAL_fieldwork_Myrtus_communis/Myrtus_phototrapping_yr2.xlsx", sheet = 2) 
+ Mcom <- read_excel("Your directory/Your file.xlsx", sheet = 2)  #Exmaple for one plant species
  
 ind_list <- Mcom %>%
   data.frame() %>%
