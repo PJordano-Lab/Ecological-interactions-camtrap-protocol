@@ -68,7 +68,7 @@ eating <- dat %>%
 
 ```
 
-Now we will include VIDEO DURATION for each row. 
+Include VIDEO DURATION for each row. 
 
 This code extracts the video duration from external metadata files to include a "duration" column that will represent the interaction intensity.
 
@@ -78,11 +78,11 @@ In the first part of the code, a list of files is obtained from your video- file
 dir <- list.dirs ("Your video-file container") # List the entire directory
 fil <- list.files(dir, full.names = T) # List of video-files (including directories)
 fil_clean <- fil[!file.info(fil)$isdir] #List of video-files (excluding directories)
-write.csv(fil_clean, "/Users/PV/video_file_list.csv", sep = ",")
+write.csv(fil_clean, "Your directory/video_file_list.csv", sep = ",")
 
 # Get a list of files with eating events (eating videos)  
 fil_eating <- str_c(eating$RelativePath, eating$File, sep ="/")  #List of preselection of eating videos 
-fil_eat_path <- file.path("/Volumes/G-RAID/SUMHAL", fil_eating) #add the path to the list above
+fil_eat_path <- file.path("Your directory", fil_eating) #add the path to the list above
 
 # Compare eating list to the entire file list (all files in GRAID) to detect missmatches (just in case you need to correct some syntax mistakes)  
 fil_lost <- setdiff(fil_eat_clean, fil_clean) #What is in my_list_2 that is not in my_list_1?
@@ -101,7 +101,7 @@ eating <- cbind(eating, duration)
 
 ```
  
- Here we create new columns: Plant_ID, Revision id and new DF.
+ Create new columns: Plant_ID, Revision id and new DF.
  
  This code is cleaning and modifying the structure of "eating" dataset to prepare it for further analysis. It starts by splitting the path of the video files into different columns. Then, it extracts the Plant_ID and Rev. The resulting dataset includes variables such as File (video file name), DateTime (date and time of the event), Behaviour, Sp1, Count1, plant, duration, Plant_ID, Rev, and ID.
 
@@ -135,7 +135,7 @@ Introducing SAMPLING EFFORT
 Once eating events are clean and with the additional information introduced this code will merge the samplig effort to each deployment (or plant)   
 
 Here is a brief summary of the steps:
-Read the video metadata from a CSV file. This data may be automatically generated with the code contained in: https://github.com/Cyanopica/Ecological-interactions-camtrap-protocol/blob/main/Preprocess/sampling_effort_extraction.R 
+Read the video metadata from a CSV file. This data may be automatically generated with the code contained in: https://github.com/PJordano-Lab/Ecological-interactions-camtrap-protocol/blob/main/Preprocess/sampling_effort_extraction.R 
 Extract the Plant and Revision IDs from the video metadata to match with the eating event data.
 Stack the effort data for each plant that had more than one cameras.
 Summarize the effort data for each camera-trapped plant by counting the number of videos, days, and cameras used for sampling.
@@ -176,7 +176,7 @@ eating_effort <- left_join(new_eating, effort_by_plant, by = "ID", keep = F)
 Check and fix TimestampIssues
 
 ```{r}
-## Fix TIMESTAMP_ISSUES  ## NOTE THAT THEY MAY BE MORE TMPSTISSUES! see above
+## Fix TIMESTAMP_ISSUES  
    TI <- eating_effort %>%
      filter(TimestampIssue == "T") #records with TimestampIssues to be fixed manually. 
    
@@ -184,20 +184,6 @@ Check and fix TimestampIssues
 mutate(DateTime = if_else(X == "59", "2021-08-03 5:00:00", DateTime)) #Repeat this mutate for each TimestampIssues 
 
 ```
-
-
-I FINSIH HERE!!!!!!!!! KEEP WORKING HERE
-
-
-
-
-
-
-
-
-
-
-
 
 GROUP EVENTS (5 miutes)   
 
@@ -242,13 +228,10 @@ eat_2 <- eating_effort %>%
 eating_events <- data.frame(eat_2) 
 ```
 
-Introduce coordinates and location to eating_events and fix Timestamp ISSUES
+Introduce coordinates and location to eating_events
 
 ```{r}
-deployments <- read.csv("/Users/PV/Documents/GitHub/SUMHAL_WP5_fieldwork/Deployments.csv", sep=";")   #In Mac sobremesa EBD
-  deployments <- read.csv("/Users/Pablo/Documents/GitHub/SUMHAL_WP5_fieldwork/Deployments.csv", sep=";") #MacBook pro
-    
-  deployments <- deployments %>%
+deployments <- read.csv("Your directory/Deployments.csv", sep=";") %>%
       select(Deployment_ID, Location, Long, Lat, Start, End, Days, Camera_ID, Timestamp_Issues)
 
 Plant_ID <- deployments$Deployment_ID %>%
@@ -270,10 +253,9 @@ eating_location$DateTime <- as.character(eating_location$DateTime) #Need to conv
    
   eating_location <- eating_location %>%
      select(File, new_path, plant, Plant_ID.x, DateTime, Sp1, Behaviour, n_cam, Videos, Days, videos_events, duration, Long, Lat ) %>% #remove non-used columns
-     mutate(TimestampIssue = if_else(DateTime < "2020-07-14 00:00:00","T","F")) %>% #Create a column with Timestam Isuues (data after first deployment setup -Corema2-) NOTE THAT THEY MAY BE MORE TMPSTISSUES!!
+     mutate(TimestampIssue = if_else(DateTime < "2020-07-14 00:00:00","T","F")) %>% #Create a column with Timestam Isuues (data after first deployment setup) NOTE THAT THEY MAY BE MORE TIMESTAMP ISSUES!!
      mutate(X = 1:n())
   
-
 
 write.csv(final_data, file="/Users/Pablo/Desktop/final_data.csv") #In MacBook pro - to overwrite final_data file in Results folder 
 ```
